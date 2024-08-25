@@ -1,0 +1,138 @@
+import React, { useState, useRef } from 'react';
+import { useParams } from 'react-router-dom';
+import axios from 'axios';
+
+function ChatPage() {
+  const { enrollmentNo, userEnrollmentNo } = useParams();
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+  const chatMessagesRef = useRef(null);
+  const socketRef = useRef(null);
+  const initializedRef = useRef(false); // To track if initialization is done
+
+  // Function to initialize WebSocket connection
+  const initializeWebSocket = () => {
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const roomName = `chat_${[enrollmentNo, userEnrollmentNo].sort().join('_')}`;
+    const socketUrl = `${protocol}://${window.location.hostname}:8000/ws/${roomName}/`;
+
+    socketRef.current = new WebSocket(socketUrl);
+
+    socketRef.current.onopen = () => {
+      console.log('WebSocket connection opened');
+    };
+
+    socketRef.current.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        { email: data.username, content: data.message },
+      ]);
+
+      // Scroll to bottom after receiving new message
+      if (chatMessagesRef.current) {
+        chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
+      }
+    };
+
+    socketRef.current.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    socketRef.current.onclose = (event) => {
+      console.log('WebSocket connection closed', event);
+    };
+  };
+
+  // Fetch previous messages from the backend
+  const fetchMessages = async () => {
+    const roomName = `chat_${[enrollmentNo, userEnrollmentNo].sort().join('_')}`;
+    try {
+      const response = await axios.get(`http://127.0.0.1:8000/rooms/${roomName}/messages/`);
+      setMessages(response.data); // Assume the backend returns a list of messages
+
+      // Scroll to bottom after fetching messages
+      if (chatMessagesRef.current) {
+        chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
+      }
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+    }
+  };
+
+  // Initialize WebSocket and fetch messages manually if not initialized
+  if (!initializedRef.current) {
+    initializedRef.current = true; // Set to true to prevent re-initialization
+    initializeWebSocket();
+    fetchMessages();
+  }
+
+  // Handle send message action
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (newMessage.trim() === '') return;
+
+    const messageData = {
+      content: newMessage,
+      enrollmentNo: enrollmentNo, // Use enrollmentNo for the current user
+      room_slug: `chat_${[enrollmentNo, userEnrollmentNo].sort().join('_')}`,
+      time_added: new Date().toISOString(), // Default to now
+    };
+
+    try {
+      await axios.post(`http://127.0.0.1:8000/create-message/`, messageData);
+      setNewMessage('');
+      // Optionally update messages locally or rely on WebSocket to receive the new message
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-500 to-indigo-600">
+      <div className="p-10 lg:p-20 text-center">
+        <h1 className="text-4xl lg:text-5xl text-white font-bold">
+          Chat with {userEnrollmentNo}
+        </h1>
+      </div>
+      <div className="lg:w-2/4 w-full mx-4 lg:mx-auto p-4 bg-white rounded-2xl shadow-lg">
+        <div
+          className="chat-messages space-y-3 overflow-y-auto max-h-96 p-4"
+          ref={chatMessagesRef}
+        >
+          {messages.map((msg, index) => (
+            <div
+              key={index}
+              className={`${
+                msg.email === enrollmentNo
+                  ? 'bg-teal-500 text-white self-end'
+                  : 'bg-gray-200 text-black self-start'
+              } rounded-lg p-3 max-w-xs lg:max-w-md break-words`}
+            >
+              <b>{msg.email}</b>: {msg.content}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="lg:w-2/4 w-full mt-6 mx-4 lg:mx-auto p-4 bg-white rounded-2xl shadow-lg">
+        <form onSubmit={handleSendMessage} className="flex">
+          <input
+            type="text"
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            className="flex-1 px-4 py-3 mr-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500"
+            placeholder="Your message..."
+          />
+          <button
+            type="submit"
+            className="px-5 py-3 rounded-xl text-white bg-teal-600 hover:bg-teal-700 transition-all duration-200 shadow-lg"
+          >
+            Submit
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export default ChatPage;

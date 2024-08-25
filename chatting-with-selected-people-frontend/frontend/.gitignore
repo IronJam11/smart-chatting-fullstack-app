@@ -1,0 +1,36 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+node_modules/
+.pnp.cjs
+.pnp.loader.mjs
+
+# Vite build output
+dist/
+
+# Vite cache
+.vite/
+.vitepress/cache/
+
+# Static files generated for production
+build/
+
+# local environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor directories and files
+.vscode/
+.idea/
+.DS_Store
+*.sublime-project
+*.sublime-workspace
