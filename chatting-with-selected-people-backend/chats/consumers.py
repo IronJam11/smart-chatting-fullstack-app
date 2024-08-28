@@ -1,27 +1,36 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
+from rest_framework.exceptions import AuthenticationFailed
+import jwt
 from asgiref.sync import sync_to_async
 from userApp.models import User
 from .models import Room, Message
-
+from .serializers import UserSerializer
 
 class ChatConsumer(AsyncWebsocketConsumer):
+    
     async def connect(self):
-        self.room_name = self.scope['url_route']['kwargs']['room_name']
-        self.room_group_name = f'chat_{self.room_name}'
-        print(self.room_name)
-       
-        
-        print(f"Connecting to room: {self.room_group_name}")
+       self.enrollmentNo1 = self.scope['url_route']['kwargs']['enrollmentNo1']
+       self.enrollmentNo2 = self.scope['url_route']['kwargs']['enrollmentNo2']
+
+        # Ensure enrollment numbers are in a consistent order (sorted)
+       sorted_enrollment_numbers = sorted([self.enrollmentNo1, self.enrollmentNo2])
+
+        # Create the room name by joining the sorted enrollment numbers
+       self.room_name = f"{sorted_enrollment_numbers[0]}_{sorted_enrollment_numbers[1]}"
+
+       self.room_group_name = f'chat_{self.room_name}'
+       print(self.room_name)
+       print(f"Connecting to room: {self.room_group_name}")
 
         # Join room group
-        await self.channel_layer.group_add(
+       await self.channel_layer.group_add(
             self.room_group_name,
             self.channel_name
         )
 
-        await self.accept()
-        print(f"Connected to room: {self.room_group_name}")
+       await self.accept()
+       print(f"Connected to room: {self.room_group_name}")
 
     async def disconnect(self, close_code):
         print(f"Disconnecting from room: {self.room_group_name}, Close code: {close_code}")
@@ -38,13 +47,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             data = json.loads(text_data)
             print(data)
             message = data['message']
-            username = data['username']
-            room = data['room']
-
-            print(f"Received message: {message} from user: {username} in room: {room}")
+            room = self.room_name
+            print(room)
+            enrollmentNo = self.enrollmentNo1
+            print(f"Received message: {message} from user: {enrollmentNo} in room: {room}")
 
             # Save the message to the database
-            await self.save_message(username, room, message)
+            await self.save_message(enrollmentNo, room, message)
 
             # Send message to room group
             await self.channel_layer.group_send(
@@ -52,7 +61,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 {
                     'type': 'chat_message',  # Change to match the method name exactly
                     'message': message,
-                    'username': username
+                    'enrollmentNo': enrollmentNo,
+                    'user': enrollmentNo
                 }
             )
         except Exception as e:
@@ -60,16 +70,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     # Receive message from room group
     async def chat_message(self, event):
+        print("----------")
+        print("----------")
+        print(event)
+        print("----------")
+        print("----------")
         message = event['message']
-        username = event['username']
-
+        enrollmentNo = event['enrollmentNo']
+        print(message)
+        print(enrollmentNo)
+        
         # Send message to WebSocket
         await self.send(text_data=json.dumps({
             'message': message,
-            'username': username
+            'enrollmentNo': enrollmentNo
         }))
-        print(f"Sent message: {message} to WebSocket for user: {username}")
-
+        print(f"Sent message: {message} to WebSocket for user: {enrollmentNo}")
     @sync_to_async
     def save_message(self, username, room, message):
         try:
@@ -89,5 +105,3 @@ class ChatConsumer(AsyncWebsocketConsumer):
             print(f"User does not exist: {username}")
         except Exception as e:
             print(f"Error saving message: {str(e)}")
-
-

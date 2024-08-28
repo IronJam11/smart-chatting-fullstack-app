@@ -9,14 +9,13 @@ function ChatPage() {
   const chatMessagesRef = useRef(null);
   const socketRef = useRef(null);
   const initializedRef = useRef(false);
-  const typingTimeoutRef = useRef(null); // Ref to track typing timeout
-  const unsavedMessagesRef = useRef([]); // Ref to store unsaved messages
+  const typingTimeoutRef = useRef(null);
+  const unsavedMessagesRef = useRef([]);
 
-  // Function to initialize WebSocket connection
   const initializeWebSocket = () => {
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const roomName = `chat_${[enrollmentNo, userEnrollmentNo].sort().join('_')}`;
-    const socketUrl = `${protocol}://${window.location.hostname}:8000/ws/${roomName}/`;
+    const socketUrl = `${protocol}://${window.location.hostname}:8000/ws/${enrollmentNo}/${userEnrollmentNo}/`;
 
     socketRef.current = new WebSocket(socketUrl);
 
@@ -25,10 +24,13 @@ function ChatPage() {
     };
 
     socketRef.current.onmessage = (event) => {
+      console.log("-----------------------fuckyou--");
+      console.log(event.data);
+      console.log("-------------------------");
       const data = JSON.parse(event.data);
       setMessages((prevMessages) => [
         ...prevMessages,
-        { email: data.username, content: data.message },
+        { enrollmentNo: data.enrollmentNo, content: data.message },
       ]);
 
       // Scroll to bottom after receiving new message
@@ -36,7 +38,6 @@ function ChatPage() {
         chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
       }
     };
-
     socketRef.current.onerror = (error) => {
       console.error('WebSocket error:', error);
     };
@@ -44,19 +45,24 @@ function ChatPage() {
     socketRef.current.onclose = async (event) => {
       console.log('WebSocket connection closed', event);
 
-      // When WebSocket closes, send all unsaved messages to the backend
-      await sendUnsavedMessages();
+      if (unsavedMessagesRef.current.length > 0) {
+        // Send unsaved messages and then close the WebSocket
+        await sendUnsavedMessages();
+      }
+
+      // Now it is safe to close the WebSocket
+      if (socketRef.current) {
+        socketRef.current.close();
+      }
     };
   };
 
-  // Fetch previous messages from the backend
   const fetchMessages = async () => {
     const roomName = `chat_${[enrollmentNo, userEnrollmentNo].sort().join('_')}`;
     try {
       const response = await axios.get(`http://127.0.0.1:8000/rooms/${roomName}/messages/`);
-      setMessages(response.data); // Assume the backend returns a list of messages
+      setMessages(response.data);
 
-      // Scroll to bottom after fetching messages
       if (chatMessagesRef.current) {
         chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
       }
@@ -65,14 +71,12 @@ function ChatPage() {
     }
   };
 
-  // Initialize WebSocket and fetch messages manually if not initialized
   if (!initializedRef.current) {
     initializedRef.current = true;
     initializeWebSocket();
     fetchMessages();
   }
 
-  // Function to send unsaved messages to the backend
   const sendUnsavedMessages = async () => {
     if (unsavedMessagesRef.current.length > 0) {
       try {
@@ -80,73 +84,75 @@ function ChatPage() {
           unsavedMessagesRef.current.map(async (message) => {
             const messageData = {
               content: message.content,
-              enrollmentNo: message.email, // Assume the email is the enrollment number
+              enrollmentNo: message.enrollmentNo,
               room_slug: `chat_${[enrollmentNo, userEnrollmentNo].sort().join('_')}`,
-              time_added: new Date().toISOString(), // Use the current time or modify as needed
+              time_added: new Date().toISOString(),
             };
             await axios.post(`http://127.0.0.1:8000/create-message/`, messageData);
           })
         );
         console.log('Unsaved messages sent to the backend');
-        unsavedMessagesRef.current = []; // Clear the unsaved messages after successful save
+        unsavedMessagesRef.current = []; // Clear after successful save
       } catch (error) {
         console.error('Error sending unsaved messages:', error);
       }
     }
   };
 
-  // Handle send message action
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (newMessage.trim() === '') return;
 
     const messageData = {
       content: newMessage,
-      email: enrollmentNo, // Use enrollmentNo for the current user
+      enrollmentNo: enrollmentNo,
       room_slug: `chat_${[enrollmentNo, userEnrollmentNo].sort().join('_')}`,
-      time_added: new Date().toISOString(), // Default to now
-      isLocal: true, // Mark message as local
+      time_added: new Date().toISOString(),
+      isLocal: true,
+      user: enrollmentNo
     };
 
-    // Update state with the new message
-    setMessages((prevMessages) => [...prevMessages, messageData]);
+    // setMessages((prevMessages) => [...prevMessages, messageData]);
     setNewMessage('');
 
-    // Add to unsaved messages
     unsavedMessagesRef.current.push(messageData);
 
-    // Send message through WebSocket
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ message: newMessage }));
     } else {
       console.error('WebSocket is not open');
     }
 
-    // Reset typing timeout
     resetTypingTimeout();
   };
 
-  // Reset typing timeout to send unsaved messages after inactivity
   const resetTypingTimeout = () => {
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
 
     typingTimeoutRef.current = setTimeout(() => {
-      sendUnsavedMessages(); // Send unsaved messages if no typing for 5 seconds
+      sendUnsavedMessages();
     }, 4000);
   };
 
-  // Cleanup on component unmount
   useEffect(() => {
     return () => {
-      if (socketRef.current) {
-        socketRef.current.close();
-      }
-
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
+
+      // Delay the WebSocket close to ensure all messages are sent
+      const delayClose = async () => {
+        if (unsavedMessagesRef.current.length > 0) {
+          await sendUnsavedMessages();
+        }
+        // if (socketRef.current) {
+        //   socketRef.current.close();
+        // }
+      };
+
+      delayClose();
     };
   }, []);
 
@@ -166,12 +172,12 @@ function ChatPage() {
             <div
               key={index}
               className={`${
-                msg.user === enrollmentNo
+                msg.email=== enrollmentNo
                   ? 'bg-teal-500 text-white self-end'
                   : 'bg-gray-200 text-black self-start'
               } rounded-lg p-3 max-w-xs lg:max-w-md break-words`}
             >
-              <b>{msg.user}</b>: {msg.content}
+              <b>{msg.user ? msg.user : msg.enrollmentNo}</b>: {msg.content}
             </div>
           ))}
         </div>
@@ -183,7 +189,7 @@ function ChatPage() {
             value={newMessage}
             onChange={(e) => {
               setNewMessage(e.target.value);
-              resetTypingTimeout(); // Reset timeout on typing
+              resetTypingTimeout();
             }}
             className="flex-1 px-4 py-3 mr-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500"
             placeholder="Your message..."

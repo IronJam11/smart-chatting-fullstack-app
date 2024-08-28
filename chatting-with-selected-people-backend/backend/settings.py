@@ -31,14 +31,17 @@ ALLOWED_HOSTS = ['127.0.0.1']
 # Application definition
 
 INSTALLED_APPS = [
-    'daphne',
     'channels',
+    'daphne',
+
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
     'userApp',
     'chats',
     'rest_framework',
@@ -155,9 +158,6 @@ CORS_ALLOW_METHODS = [
 # SESSION_COOKIE_SAMESITE = 'None'  # Ensure this aligns with your frontend settings
 
 CSRF_TRUSTED_ORIGINS = ['http://127.0.0.1']
-CORS_ALLOWED_ORIGINS = [
-    'http://127.0.0.1:5175',  # Replace with your frontend URL
-]
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ORIGIN_ALLOW_ALL = True
